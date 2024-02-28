@@ -1,0 +1,69 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector
+  namespace: monitoring
+data:
+  agent.yaml: |
+    data_dir: /vector-data-dir
+    api:
+      enabled: true
+      address: 127.0.0.1:8686
+      playground: false
+    sources:
+      raw_services_logs:
+        type: kubernetes_logs
+        extra_label_selector: "example-project.io/project=demo-vector-sre"
+    transforms:
+      services_logs:
+        type: remap
+        inputs: [raw_services_logs]
+        source: |
+          kubernetes_labels = .kubernetes
+          parsed_message = parse_json!(string!(.message))
+          . = parsed_message
+          .labels.kubernetes_pod_name = kubernetes_labels.pod_name
+          .labels.service_name = kubernetes_labels.pod_labels."example-project.io/app_name"
+          .labels.pop = "${POP_ID}"
+          del(.file)
+          del(.kubernetes)
+          del(.source_type)
+          del(.stream)
+          del(.timestamp)
+          del(.timestamp_end)
+      filtered_app_1_logs:
+        type: filter
+        inputs: [services_logs]
+        condition:
+          type: vrl
+          source: (.level == "WARNING" || .level == "ERROR" || .level == "INFO") && .labels.service_name == "app-1"
+      filtered_app_2_logs:
+        type: filter
+        inputs: [services_logs]
+        condition:
+          type: vrl
+          source: (.level == "WARNING" || .level == "ERROR" ) && .labels.service_name == "app-2"
+    sinks:
+      gcp_log:
+        type: "gcp_stackdriver_logs"
+        inputs: [filtered_app_1_logs, filtered_app_2_logs]
+        project_id: ${PROJECT_ID}
+        severity_key: "level"
+        log_id: "demo-vector-sre"
+        resource:
+          type: generic_task
+          project_id: "${PROJECT_ID}"
+          location: europe-west9
+          namespace: "{{labels.pop}}"
+          job: "{{labels.service_name}}"
+          task_id: "{{labels.kubernetes_pod_name}}"
+      archivage:
+        type: gcp_cloud_storage
+        inputs: [raw_services_logs]
+        bucket: ${BUCKET_NAME}
+        encoding:
+          codec: json
+        filename_append_uuid: true
+        filename_time_format: "%s"
+        key_prefix: date=%F/

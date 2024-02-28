@@ -1,2 +1,2 @@
-manifests/secrets/
+manifests/secrets/*
 !manifests/secrets/vector_secret.template.yaml

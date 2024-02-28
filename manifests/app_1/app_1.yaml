@@ -1,0 +1,24 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-1
+  namespace: default
+  labels:
+    app: app-1
+spec:
+  selector:
+    matchLabels:
+      example-project.io/app_name: app-1
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        example-project.io/project: demo-vector-sre
+        example-project.io/app_name: app-1
+    spec:
+      containers:
+        - name: app-1
+          image: ghcr.io/samy-dougui/demo-vector-sre
+          imagePullPolicy: IfNotPresent
+      restartPolicy: Always
